@@ -1,0 +1,23 @@
+version: "3"
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      SERVER_HOST: "server"
+      SERVER_PORT: ':40999'
+    ports:
+      - 40999:40999
+    command: ["./main"]
+
+  client:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      SERVER_HOST: "server"
+      SERVER_PORT: ":40999"
+    depends_on:
+      - server
+    command: ["./main"]

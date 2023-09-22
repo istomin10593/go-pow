@@ -1,0 +1,6 @@
+http:
+  host: "localhost"
+  port: ":40999"
+  timeout: 2s
+pow:
+  zeroBits: 4

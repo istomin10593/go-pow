@@ -1,0 +1,9 @@
+server:
+  host: "localhost"
+  port: ":40999"
+  timeout: 2s
+client:
+  timeout: 500ms
+  number: 3
+pow:
+  maxiterations: 1000000
