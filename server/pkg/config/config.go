@@ -15,7 +15,12 @@ type Config struct {
 		Host    string        `yaml:"host"`
 		Port    string        `yaml:"port"`
 		Timeout time.Duration `yaml:"timeout"`
-	} `yaml:"http"`
+	} `yaml:"server"`
+	Cache struct {
+		Host       string        `yaml:"host"`
+		Port       string        `yaml:"port"`
+		Expiration time.Duration `yaml:"expiration"`
+	} `yaml:"cache"`
 	Pow struct {
 		ZeroBits int `yaml:"zeroBits"`
 	} `yaml:"pow"`
@@ -42,6 +47,8 @@ func Parse(filePath string) (*Config, error) {
 
 	config.Server.Host = getEnv("SERVER_HOST", config.Server.Host)
 	config.Server.Port = getEnv("SERVER_PORT", config.Server.Port)
+	config.Cache.Host = getEnv("CACHE_HOST", config.Cache.Host)
+	config.Cache.Port = getEnv("CACHE_PORT", config.Cache.Port)
 
 	return &config, nil
 }

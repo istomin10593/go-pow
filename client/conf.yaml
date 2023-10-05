@@ -4,6 +4,6 @@ server:
   timeout: 2s
 client:
   timeout: 500ms
-  number: 3
+  number: 5
 pow:
   maxiterations: 1000000

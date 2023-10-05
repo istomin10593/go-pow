@@ -6,18 +6,27 @@ services:
       dockerfile: server/Dockerfile
     environment:
       SERVER_HOST: "server"
-      SERVER_PORT: ':40999'
+      SERVER_PORT: ":40999"
+      CACHE_HOST: "redis"
+      CACHE_PORT: ":6379"
     ports:
       - 40999:40999
+    depends_on:
+      - redis
     command: ["./main"]
 
   client:
     build:
       context: .
-      dockerfile: server/Dockerfile
+      dockerfile: client/Dockerfile
     environment:
       SERVER_HOST: "server"
       SERVER_PORT: ":40999"
     depends_on:
       - server
     command: ["./main"]
+
+  redis:
+      image: redis:latest
+      ports:
+        - "6379:6379"

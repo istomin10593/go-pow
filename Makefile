@@ -18,4 +18,7 @@ test:
 lint:
 	@(golangci-lint run)
 
+redis:
+	docker run -d -p 6379:6379 --name my-redis redis:latest
+
 PHONE: lint

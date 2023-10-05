@@ -5,7 +5,7 @@ import (
 	"flag"
 	"go-pow/client/internal/client"
 	"go-pow/client/pkg/config"
-	"go-pow/client/pkg/logger"
+	"go-pow/pkg/logger"
 	"os"
 	"os/signal"
 	"syscall"

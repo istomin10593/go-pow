@@ -4,10 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"go-pow/pkg/logger"
+	"go-pow/server/internal/handler"
 	"go-pow/server/internal/server"
 	"go-pow/server/pkg/book"
+	"go-pow/server/pkg/cache"
 	"go-pow/server/pkg/config"
-	"go-pow/server/pkg/logger"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,6 +29,7 @@ func main() {
 	debug, _ := os.LookupEnv("DEBUG")
 
 	log := logger.New(debug)
+
 	defer func() {
 		done()
 		log.Sync()
@@ -77,6 +80,17 @@ func realMain(ctx context.Context, log *zap.Logger) error {
 		return fmt.Errorf("failed to create new book: %w", err)
 	}
 
+	// Get cache instance.
+	cache, err := cache.New(ctx, cfg.Cache.Host, cfg.Cache.Port, cfg.Cache.Expiration)
+	if err != nil {
+		log.Error("failed to create new cache", zap.Error(err))
+
+		return fmt.Errorf("failed to create new cache: %w", err)
+	}
+
+	// Create handler.
+	handler := handler.New(cfg.Pow.ZeroBits, cfg.Server.Timeout, log, book, cache)
+
 	// Run server.
-	return server.New(log, cfg, book).Run(ctx)
+	return server.New(cfg, book, handler).Run(ctx, log)
 }

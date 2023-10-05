@@ -2,17 +2,22 @@ package book
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
+)
+
+// delimiter for quote
+const (
+	delimiter byte = '~'
 )
 
 // Quote with wisdom words
 type Quote struct {
-	Text   string
-	Author string
+	Text   []byte
+	Author []byte
 }
 
 // Book with quotes.
@@ -34,11 +39,11 @@ func New(filePath string) (*Book, error) {
 	var quotesList Book
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		parts := strings.Split(scanner.Text(), "~")
+		parts := bytes.Split(scanner.Bytes(), []byte{delimiter})
 		if len(parts) == 2 {
 			quote := Quote{
-				Text:   strings.TrimSpace(parts[0]),
-				Author: strings.TrimSpace(parts[1]),
+				Text:   bytes.TrimSpace(parts[0]),
+				Author: bytes.TrimSpace(parts[1]),
 			}
 			quotesList = append(quotesList, &quote)
 		}
@@ -52,8 +57,13 @@ func New(filePath string) (*Book, error) {
 }
 
 // GetRandQuote returns random quote.
-func (b Book) GetRandQuote() string {
+func (b Book) GetRandQuote() []byte {
 	i := rand.Intn(len(b))
-	return fmt.Sprintf("%s~%s", b[i].Text, b[i].Author)
 
+	buf := &bytes.Buffer{}
+	buf.Write(b[i].Text)
+	buf.WriteByte(delimiter)
+	buf.Write(b[i].Author)
+
+	return buf.Bytes()
 }

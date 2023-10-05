@@ -6,10 +6,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY server/cmd/. cmd/
-COPY server/. .
+# COPY server/cmd server/cmd
+COPY server server
+COPY pkg pkg
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /main ./cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -o /main /app/server/cmd
 
 # Run stage
 FROM alpine:latest

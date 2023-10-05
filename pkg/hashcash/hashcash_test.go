@@ -9,12 +9,10 @@ import (
 // getHashcash generates a valid Hashcash struct.
 func getHashcash() *Hashcash {
 	return &Hashcash{
-		version:  1,
 		zeroBits: 20,
-		date:     "130303060000",
-		resource: "255.255.0.0:80",
-		rand:     "NTQ2",
 		counter:  0,
+		rand:     []byte("NTQ2"),
+		header:   []byte("1:20:1303030600:255.255.0.0:80::NTQ2:"),
 	}
 }
 
@@ -47,7 +45,7 @@ func TestCalculate(t *testing.T) {
 
 			if tt.wantErr == nil {
 				assert.Nil(t, err)
-				assert.True(t, h.isValid(calculateHash(h.String())))
+				assert.True(t, h.Validate())
 			} else {
 				assert.Equal(t, tt.wantErr, err)
 			}
@@ -87,7 +85,7 @@ func TestIsValidSolution(t *testing.T) {
 			h := getHashcash()
 			h.zeroBits = tt.zeroBits
 
-			got := h.isValid(tt.hash)
+			got := h.isValid([]byte(tt.hash))
 			assert.Equal(t, tt.want, got)
 		})
 	}

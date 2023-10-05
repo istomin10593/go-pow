@@ -1,6 +1,10 @@
-http:
+server:
   host: "localhost"
   port: ":40999"
   timeout: 2s
+cache:
+  host: "localhost"
+  port: ":6379"
+  expiration : 5s
 pow:
   zeroBits: 4
