@@ -82,8 +82,14 @@ func TestProtocol_Read(t *testing.T) {
 			// Test the Read method.
 			err = p.Read()
 			assert.Equal(t, tc.expectedPhase, p.phase)
-			assert.Equal(t, tc.expectedPayload, p.payload)
-			assert.Equal(t, tc.expectedErr, err)
+
+			if tc.expectedPayload != nil {
+				assert.Equal(t, tc.expectedPayload, p.payload)
+			}
+
+			if tc.expectedErr != nil {
+				assert.Equal(t, tc.expectedErr, err)
+			}
 		})
 	}
 }

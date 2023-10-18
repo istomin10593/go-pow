@@ -12,6 +12,17 @@ const (
 	value = "value"
 )
 
+// GetAndDeleteScript is a Lua script that gets a key from cache and deletes it.
+var GetAndDeleteScript = `
+    local value = redis.call('GET', KEYS[1])
+    if value then
+        redis.call('DEL', KEYS[1])
+        return value
+    else
+        return nil
+    end
+`
+
 // RedisCache - cache for random values
 type RedisCache struct {
 	ctx        context.Context
@@ -47,7 +58,7 @@ func (c *RedisCache) Add(key []byte) error {
 
 // Get gets key from cache.
 func (c *RedisCache) Get(key []byte) (bool, error) {
-	_, err := c.client.Get(c.ctx, string(key)).Result()
+	_, err := c.client.Eval(c.ctx, GetAndDeleteScript, []string{string(key)}).Result()
 	if err == redis.Nil {
 		return false, nil // Key does not exist in cache
 	}
@@ -56,10 +67,5 @@ func (c *RedisCache) Get(key []byte) (bool, error) {
 		return false, err // Some other error occurred
 	}
 
-	return true, nil // Key exists in cache
-}
-
-// Delete deletes key from cache.
-func (c *RedisCache) Delete(key []byte) error {
-	return c.client.Del(c.ctx, string(key)).Err()
+	return true, nil
 }

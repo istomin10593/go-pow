@@ -1,8 +1,8 @@
 up:
-	sudo docker compose up --build
+	docker compose up --build
 
 down:
-	sudo docker compose down
+	docker compose down
 
 server-run:
 	cd server && make run

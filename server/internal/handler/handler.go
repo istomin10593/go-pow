@@ -4,12 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"go-pow/pkg/hashcash"
 	hash "go-pow/pkg/hashcash"
 	"go-pow/pkg/pow"
 	"go-pow/server/pkg/book"
 	"net"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -24,7 +22,6 @@ var (
 type Handler struct {
 	zeroBits int
 	timeout  time.Duration
-	mu       sync.RWMutex
 	log      *zap.Logger
 	book     *book.Book
 	cache    Cache
@@ -34,7 +31,6 @@ type Handler struct {
 type Cache interface {
 	Add([]byte) error
 	Get([]byte) (bool, error)
-	Delete([]byte) error
 }
 
 // New creates a new Handler instance.
@@ -48,7 +44,6 @@ func New(
 	return &Handler{
 		zeroBits: zeroBits,
 		timeout:  timeout,
-		mu:       sync.RWMutex{},
 		log:      log,
 		book:     book,
 		cache:    cache,
@@ -109,7 +104,7 @@ func (h *Handler) Handle(conn net.Conn) error {
 // init handles a connection with init phase.
 func (h *Handler) init(address []byte) ([]byte, error) {
 	// Generate a random seed.
-	rand := hashcash.GenerateRandom()
+	rand := hash.GenerateRandom()
 
 	// Create a hashcash instance.
 	hashcash := hash.New(h.zeroBits, address, rand)
