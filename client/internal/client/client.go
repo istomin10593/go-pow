@@ -44,7 +44,7 @@ func (c *Client) Run(ctx context.Context) {
 }
 
 // runConnection handles a single connection.
-func (c *Client) runConnection(ctx context.Context, done chan struct{}, ID int) {
+func (c *Client) runConnection(ctx context.Context, done chan struct{}, id int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -52,10 +52,10 @@ func (c *Client) runConnection(ctx context.Context, done chan struct{}, ID int) 
 
 			return
 		default:
-			if err := c.handleConnection(ID, done); err != nil {
-				c.log.Info("pow completed with error", zap.Int("clientID", ID))
+			if err := c.handleConnection(id, done); err != nil {
+				c.log.Info("pow completed with error", zap.Int("clientID", id))
 			} else {
-				c.log.Info("pow completed successfully", zap.Int("clientID", ID))
+				c.log.Info("pow completed successfully", zap.Int("clientID", id))
 			}
 
 			return
@@ -65,14 +65,14 @@ func (c *Client) runConnection(ctx context.Context, done chan struct{}, ID int) 
 
 // handleConnection connects to the server and handles the pow.
 func (c *Client) handleConnection(
-	ID int,
+	id int,
 	done chan struct{},
 ) error {
 	defer func() {
 		done <- struct{}{}
 	}()
 
-	log := c.log.With(zap.Int("clientID", ID))
+	log := c.log.With(zap.Int("clientID", id))
 
 	connReq, err := net.Dial("tcp", c.cfg.Server.Host+c.cfg.Server.Port)
 	if err != nil {
@@ -86,7 +86,7 @@ func (c *Client) handleConnection(
 	prot := pow.New(connReq, c.cfg.Server.Timeout)
 
 	// Request a challenge header by sending the message with init phase.
-	if err := prot.Write(); err != nil {
+	if err = prot.Write(); err != nil {
 		log.Error("failed to request a challenge header", zap.Error(err))
 
 		return err
@@ -95,7 +95,7 @@ func (c *Client) handleConnection(
 	log.Debug("requested a challenge header")
 
 	// Read a challenge header.
-	if err := prot.Read(); err != nil {
+	if err = prot.Read(); err != nil {
 		log.Error("failed to read a challenge header", zap.Error(err))
 
 		return err
@@ -104,13 +104,13 @@ func (c *Client) handleConnection(
 	log.Debug("got a challenge header", zap.String("header", string(prot.Payload())))
 
 	var hashcash hash.Hashcash
-	if err := hashcash.Parse(prot.Payload()); err != nil {
+	if err = hashcash.Parse(prot.Payload()); err != nil {
 		log.Error("failed to parse a challenge header", zap.Error(err))
 
 		return err
 	}
 
-	if err := hashcash.Calculate(c.cfg.Pow.MaxIterations); err != nil {
+	if err = hashcash.Calculate(c.cfg.Pow.MaxIterations); err != nil {
 		log.Error("failed to solve the pow", zap.Error(err))
 
 		return err
@@ -126,22 +126,22 @@ func (c *Client) handleConnection(
 	}
 	defer connResp.Close()
 
-	//New pow protocol instance to respond with a solution header.
+	// New pow protocol instance to respond with a solution header.
 	prot = pow.New(connResp, c.cfg.Server.Timeout)
 
 	// Populate the message with a solution header.
-	prot.SetPhase(pow.ValidPhase)
+	prot.SetValidPhase()
 	prot.SetPayload(hashcash.Header())
 
 	// Send a solution header.
-	if err := prot.Write(); err != nil {
+	if err = prot.Write(); err != nil {
 		log.Error("failed to send a solution header", zap.Error(err))
 
 		return err
 	}
 
 	// Read a challenge header.
-	if err := prot.Read(); err != nil {
+	if err = prot.Read(); err != nil {
 		log.Error("failed to read a wisdom quote", zap.Error(err))
 
 		return err

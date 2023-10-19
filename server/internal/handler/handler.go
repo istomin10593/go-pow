@@ -65,8 +65,10 @@ func (h *Handler) Handle(conn net.Conn) error {
 	}
 
 	// 	Create new payload.
-	var payload []byte
-	var err error
+	var (
+		payload []byte
+		err     error
+	)
 
 	switch prot.Phase() {
 	case pow.InitPhase:
@@ -144,9 +146,9 @@ func (h *Handler) valid(header []byte) ([]byte, error) {
 
 	ok, err := h.cache.Get(hashcashResponse.GetRand())
 	if err != nil {
-		h.log.Error("error checking cache", zap.Error(err))
+		h.log.Error("failed to check a cache", zap.Error(err))
 
-		return nil, fmt.Errorf("error checking cache: %w", err)
+		return nil, fmt.Errorf("failed to check a cache: %w", err)
 	}
 
 	if !ok {

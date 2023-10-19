@@ -36,7 +36,7 @@ var (
 //   - Other types of messages or data may also be present, depending on the specific use case.
 
 // Delimiter.
-var delimiter byte = 95
+const delimiter byte = 95
 
 // PhaseProt represents the PoW protocol Phase.
 type PhaseProt byte
@@ -93,8 +93,8 @@ func (p *Protocol) Phase() PhaseProt {
 }
 
 // SetPhase sets  the protocol Phase.
-func (p *Protocol) SetPhase(phase PhaseProt) {
-	p.phase = phase
+func (p *Protocol) SetValidPhase() {
+	p.phase = ValidPhase
 }
 
 // Payload returns the protocol Payload.
@@ -110,11 +110,12 @@ func (p *Protocol) SetPayload(payload []byte) {
 // Read reads the protocol message from the connection.
 func (p *Protocol) Read() error {
 	// Set a timeout for reading.
-	p.conn.SetReadDeadline(time.Now().Add(p.timeout))
+	_ = p.conn.SetReadDeadline(time.Now().Add(p.timeout))
 
 	// Read the mesage.
 	readBuf := make([]byte, 1024)
 	n, err := p.conn.Read(readBuf)
+
 	if err != nil {
 		return ErrReadConn
 	}

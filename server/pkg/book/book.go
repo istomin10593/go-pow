@@ -37,13 +37,16 @@ func New(filePath string) (*Book, error) {
 
 	var quotesList Book
 	scanner := bufio.NewScanner(file)
+
 	for scanner.Scan() {
 		parts := strings.Split(scanner.Text(), delimiter)
+
 		if len(parts) == 2 {
 			quote := Quote{
 				Text:   strings.TrimSpace(parts[0]),
 				Author: strings.TrimSpace(parts[1]),
 			}
+
 			quotesList = append(quotesList, &quote)
 		}
 	}
@@ -57,6 +60,8 @@ func New(filePath string) (*Book, error) {
 
 // GetRandQuote returns random quote.
 func (b Book) GetRandQuote() []byte {
+	// #nosec G404
 	i := rand.Intn(len(b))
+
 	return []byte(b[i].Text + delimiter + b[i].Author)
 }

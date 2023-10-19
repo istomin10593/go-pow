@@ -1,8 +1,7 @@
 package handler
 
 import (
-	"context"
-	"fmt"
+	"errors"
 	hash "go-pow/pkg/hashcash"
 	"go-pow/pkg/pow"
 	"go-pow/server/pkg/book"
@@ -14,16 +13,25 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap/zaptest"
+)
+
+const (
+	defaultserverHost      = "localhost"
+	defaultserverPort      = ":8081"
+	defaultSourceFile      = "quotes_test.txt"
+	defaultPowTimeout      = time.Second * 1
+	defaultCacheExpitation = time.Millisecond * 50
 )
 
 // getConfig returns a config.Config with the given parameters.
 func getConfig(zeroBits int, timeout time.Duration) *config.Config {
 	config := &config.Config{}
 
-	config.Server.Host = "localhost"
-	config.Server.Port = ":8081"
-	config.Server.Timeout = timeout
+	config.Server.Host = defaultserverHost
+	config.Server.Port = defaultserverPort
+	config.Server.Timeout = defaultPowTimeout
 
 	config.Pow.ZeroBits = zeroBits
 
@@ -33,10 +41,12 @@ func getConfig(zeroBits int, timeout time.Duration) *config.Config {
 }
 
 func TestHandleConnection(t *testing.T) {
-	defaultserverHost := "localhost"
-	defaultserverPort := ":8081"
-	defaultSourceFile := "quotes_test.txt"
-	defaultPowTimeout := time.Second * 1
+	initPhaseCacheErr := errors.New("initPhaseCacheErr")
+	validPhseCacheErr := errors.New("validPhaseCacheErr")
+
+	headerInvalidVersion := "0:3:231019170010:127.0.0.1:58312::NzUx:MTM4Ng=="
+	headerInValidSolution := "1:3:231019170010:127.0.0.1:58312::NzUx:MTM4MA=="
+	headerValid := "1:3:231019170010:127.0.0.1:58312::NzUx:MTM4Ng=="
 
 	type args struct {
 		zeroBits      int
@@ -52,12 +62,12 @@ func TestHandleConnection(t *testing.T) {
 		testClient func(*testing.T, args)
 	}{
 		{
-			name: "Error - failed to read client request",
+			name: "Error - failed to read client request. Failed to read from connection",
 			args: args{
 				zeroBits:    3,
 				phaseNumber: 1,
 			},
-			wantErr: fmt.Errorf("failed to read request: failed to read from connection"),
+			wantErr: pow.ErrReadConn,
 			testClient: func(t *testing.T, args args) {
 				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
 				if err != nil {
@@ -72,14 +82,15 @@ func TestHandleConnection(t *testing.T) {
 			},
 		},
 		{
-			name: "Success - pow validation successful",
+			name: "Error - failed to add rand to the cache",
 			args: args{
 				zeroBits:    3,
 				phaseNumber: 1,
 			},
 			setupMocks: func(cacheMock *cache.MockCache) {
-				cacheMock.On("GetUniqueID", context.Background()).Return(int64(123), nil)
+				cacheMock.On("Add", mock.Anything).Return(initPhaseCacheErr)
 			},
+			wantErr: initPhaseCacheErr,
 			testClient: func(t *testing.T, args args) {
 				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
 				if err != nil {
@@ -96,132 +107,144 @@ func TestHandleConnection(t *testing.T) {
 
 				t.Log("test client requested a challenge header")
 
-				if err := prot.Read(); err != nil {
-					t.Fatal(err)
-				}
+				conn.Close()
 
-				t.Log("test client received a challenge header:", string(prot.Payload()))
-
-				var hashcash hash.Hashcash
-				if err := hashcash.Parse(prot.Payload()); err != nil {
-					t.Fatal(err)
-				}
-
-				if err := hashcash.Calculate(args.maxIterations); err != nil {
-					t.Fatal(err)
-				}
-
-				conn, err = net.Dial("tcp", defaultserverHost+defaultserverPort)
+				t.Log("test client shutdown")
+			},
+		},
+		{
+			name: "Error - failed to parse a solution header, invalid version",
+			args: args{
+				zeroBits:    3,
+				phaseNumber: 1,
+			},
+			wantErr: hash.ErrInvalidVersion,
+			testClient: func(t *testing.T, args args) {
+				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				t.Log("test client connected to the server")
 
-				prot = pow.New(conn, defaultPowTimeout)
+				prot := pow.New(conn, defaultPowTimeout)
 
-				prot.SetPhase(pow.ValidPhase)
-				prot.SetPayload(hashcash.Header())
+				prot.SetValidPhase()
+				prot.SetPayload([]byte(headerInvalidVersion))
 
 				if err := prot.Write(); err != nil {
 					t.Fatal(err)
 				}
 
-				t.Log("test client sent a solution header:", string(hashcash.Header()))
-
-				if err := prot.Read(); err != nil {
-					t.Fatal(err)
-				}
-
-				t.Log("test client received a response:", string(prot.Payload()))
+				t.Log("test client sent a solution header:", headerInvalidVersion)
 
 				conn.Close()
 
 				t.Log("test client shutdown")
 			},
 		},
-		// {
-		// 	name: "Error - failed to parse a response header",
-		// 	args: args{
-		// 		serverPort:    defaultserverPort,
-		// 		serverHost:    defaultserverHost,
-		// 		zeroBits:      3,
-		// 		maxIterations: 10000,
-		// 	},
-		// 	wantErr: hash.ErrInvalidVersion,
-		// 	testClient: func(t *testing.T, args args, syncChan chan struct{}) {
-		// 		<-syncChan
+		{
+			name: "Error - failed to check a cache",
+			args: args{
+				zeroBits:    3,
+				phaseNumber: 1,
+			},
+			setupMocks: func(cacheMock *cache.MockCache) {
+				cacheMock.On("Get", mock.Anything).Return(false, validPhseCacheErr)
+			},
+			wantErr: validPhseCacheErr,
+			testClient: func(t *testing.T, args args) {
+				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-		// 		conn, err := net.Dial("tcp", args.serverHost+args.serverPort)
-		// 		if err != nil {
-		// 			t.Fatal(err)
-		// 		}
+				t.Log("test client connected to the server")
 
-		// 		t.Log("test client connected to the server")
+				prot := pow.New(conn, defaultPowTimeout)
 
-		// 		buf := make([]byte, 1024)
-		// 		n, err := conn.Read(buf)
-		// 		if err != nil {
-		// 			t.Fatal(err)
-		// 		}
+				prot.SetValidPhase()
+				prot.SetPayload([]byte(headerValid))
 
-		// 		headerPOW := string(buf[:n])
+				if err := prot.Write(); err != nil {
+					t.Fatal(err)
+				}
 
-		// 		t.Log("test client received a challenge header:", headerPOW)
+				t.Log("test client sent a solution header:", headerValid)
 
-		// 		headerResponse := "0:3:230920144708:127.0.0.1:50368::MjQ3:MA="
-		// 		if _, err := conn.Write([]byte(headerResponse)); err != nil {
-		// 			t.Fatal(err)
-		// 		}
+				conn.Close()
 
-		// 		t.Log("test client sent an invalid header:", headerResponse)
+				t.Log("test client shutdown")
+			},
+		},
+		{
+			name: "Error - rand is not in the cache",
+			args: args{
+				zeroBits:    3,
+				phaseNumber: 1,
+			},
+			setupMocks: func(cacheMock *cache.MockCache) {
+				cacheMock.On("Get", mock.Anything).Return(false, nil)
+			},
+			wantErr: ErrUnreconizedRandom,
+			testClient: func(t *testing.T, args args) {
+				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-		// 		conn.Close()
+				t.Log("test client connected to the server")
 
-		// 		t.Log("test client shutdown")
-		// 	},
-		// },
-		// {
-		// 	name: "Error - pow validation failed",
-		// 	args: args{
-		// 		serverPort:    defaultserverPort,
-		// 		serverHost:    defaultserverHost,
-		// 		zeroBits:      3,
-		// 		maxIterations: 10000,
-		// 	},
-		// 	wantErr: hash.ErrMaxIterationsExceeded,
-		// 	testClient: func(t *testing.T, args args, syncChan chan struct{}) {
-		// 		<-syncChan
+				prot := pow.New(conn, defaultPowTimeout)
 
-		// 		conn, err := net.Dial("tcp", args.serverHost+args.serverPort)
-		// 		if err != nil {
-		// 			t.Fatal(err)
-		// 		}
+				prot.SetValidPhase()
+				prot.SetPayload([]byte(headerValid))
 
-		// 		t.Log("test client connected to the server")
+				if err := prot.Write(); err != nil {
+					t.Fatal(err)
+				}
 
-		// 		buf := make([]byte, 1024)
-		// 		n, err := conn.Read(buf)
-		// 		if err != nil {
-		// 			t.Fatal(err)
-		// 		}
+				t.Log("test client sent a solution header:", headerValid)
 
-		// 		headerPOW := string(buf[:n])
+				conn.Close()
 
-		// 		t.Log("test client received a challenge header:", headerPOW)
+				t.Log("test client shutdown")
+			},
+		},
+		{
+			name: "Error - pow validation failed",
+			args: args{
+				zeroBits:    3,
+				phaseNumber: 1,
+			},
+			setupMocks: func(cacheMock *cache.MockCache) {
+				cacheMock.On("Get", mock.Anything).Return(true, nil)
+			},
+			wantErr: ErrInvalidSolutionHeader,
+			testClient: func(t *testing.T, args args) {
+				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-		// 		headerResponse := "1:3:230920144708:127.0.0.1:50368::MjQ3:MQ=="
-		// 		if _, err := conn.Write([]byte(headerResponse)); err != nil {
-		// 			t.Fatal(err)
-		// 		}
+				t.Log("test client connected to the server")
 
-		// 		t.Log("test client sent a header with failed pow:", headerResponse)
+				prot := pow.New(conn, defaultPowTimeout)
 
-		// 		conn.Close()
+				prot.SetValidPhase()
+				prot.SetPayload([]byte(headerInValidSolution))
 
-		// 		t.Log("test client shutdown")
-		// 	},
-		// },
+				if err := prot.Write(); err != nil {
+					t.Fatal(err)
+				}
+
+				t.Log("test client sent a solution header:", headerInValidSolution)
+
+				conn.Close()
+
+				t.Log("test client shutdown")
+			},
+		},
 		{
 			name: "Success - pow validation successful",
 			args: args{
@@ -229,6 +252,10 @@ func TestHandleConnection(t *testing.T) {
 				maxIterations: 1000000,
 				phaseNumber:   2,
 			},
+			setupMocks: func(cacheMock *cache.MockCache) {
+				cacheMock.On("Add", mock.Anything).Return(nil)
+				cacheMock.On("Get", mock.Anything).Return(true, nil)
+			},
 			testClient: func(t *testing.T, args args) {
 				conn, err := net.Dial("tcp", defaultserverHost+defaultserverPort)
 				if err != nil {
@@ -269,7 +296,7 @@ func TestHandleConnection(t *testing.T) {
 
 				prot = pow.New(conn, defaultPowTimeout)
 
-				prot.SetPhase(pow.ValidPhase)
+				prot.SetValidPhase()
 				prot.SetPayload(hashcash.Header())
 
 				if err := prot.Write(); err != nil {
@@ -293,6 +320,13 @@ func TestHandleConnection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup mocks.
+			cacheMock := &cache.MockCache{}
+
+			if tt.setupMocks != nil {
+				tt.setupMocks(cacheMock)
+			}
+
 			// Get config.
 			cfg := getConfig(tt.args.zeroBits, defaultPowTimeout)
 
@@ -303,9 +337,7 @@ func TestHandleConnection(t *testing.T) {
 			book, err := book.New(defaultSourceFile)
 			assert.NoError(t, err)
 
-			cache := &cache.MockCache{}
-
-			handler := New(tt.args.zeroBits, cfg.Server.Timeout, log, book, cache)
+			handler := New(tt.args.zeroBits, cfg.Server.Timeout, log, book, cacheMock)
 
 			// Handle connection.
 			ln, err := net.Listen("tcp", cfg.Server.Host+cfg.Server.Port)
@@ -323,7 +355,7 @@ func TestHandleConnection(t *testing.T) {
 				err = handler.Handle(conn)
 
 				if tt.wantErr != nil {
-					assert.EqualError(t, err, tt.wantErr.Error())
+					assert.True(t, errors.Is(err, tt.wantErr))
 				} else {
 					assert.NoError(t, err)
 				}

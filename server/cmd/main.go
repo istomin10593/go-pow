@@ -32,7 +32,7 @@ func main() {
 
 	defer func() {
 		done()
-		log.Sync()
+		_ = log.Sync()
 
 		if r := recover(); r != nil {
 			log.Fatal("application panic", zap.Any("panic", r))
@@ -43,7 +43,7 @@ func main() {
 	err := realMain(ctx, log)
 
 	if err != nil {
-		log.Fatal("fatal err", zap.Error(err))
+		log.Panic("fatal err", zap.Error(err))
 	}
 
 	log.Info("successful shutdown")

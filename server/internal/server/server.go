@@ -63,6 +63,7 @@ func (s *Server) Run(ctx context.Context, log *zap.Logger) error {
 
 				break
 			}
+
 			log.Error("failed to accept connection", zap.Error(err))
 
 			continue

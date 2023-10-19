@@ -2,35 +2,36 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 )
 
-// Default value.
 const (
+	// Default value.
 	value = "value"
+
+	// GetAndDeleteScript is a Lua script that gets a key from cache and deletes it.
+	getAndDeleteScript = `
+	local value = redis.call('GET', KEYS[1])
+	if value then
+		redis.call('DEL', KEYS[1])
+		return value
+	else
+		return nil
+	end
+	`
 )
 
-// GetAndDeleteScript is a Lua script that gets a key from cache and deletes it.
-var GetAndDeleteScript = `
-    local value = redis.call('GET', KEYS[1])
-    if value then
-        redis.call('DEL', KEYS[1])
-        return value
-    else
-        return nil
-    end
-`
-
-// RedisCache - cache for random values
+// RedisCache - cache for random values.
 type RedisCache struct {
 	ctx        context.Context
 	client     *redis.Client
 	expiration time.Duration
 }
 
-// New - create new instance of RedisCache
+// New - create new instance of RedisCache.
 func New(ctx context.Context, host, port string, expiration time.Duration) (*RedisCache, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     host + port,
@@ -58,13 +59,16 @@ func (c *RedisCache) Add(key []byte) error {
 
 // Get gets key from cache.
 func (c *RedisCache) Get(key []byte) (bool, error) {
-	_, err := c.client.Eval(c.ctx, GetAndDeleteScript, []string{string(key)}).Result()
-	if err == redis.Nil {
-		return false, nil // Key does not exist in cache
+	_, err := c.client.Eval(c.ctx, getAndDeleteScript, []string{string(key)}).Result()
+
+	if errors.Is(err, redis.Nil) {
+		// Key does not exist in cache.
+		return false, nil
 	}
 
 	if err != nil {
-		return false, err // Some other error occurred
+		// Some other error occurred.
+		return false, err
 	}
 
 	return true, nil

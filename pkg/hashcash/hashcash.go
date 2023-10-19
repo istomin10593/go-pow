@@ -3,6 +3,8 @@ package hashcash
 import (
 	"bytes"
 	"crypto/rand"
+
+	// #nosec G505
 	"crypto/sha1"
 	"encoding/base64"
 	"errors"
@@ -38,15 +40,15 @@ func New(zeroBits int, resource, rand []byte) *Hashcash {
 
 	// Version.
 	buf.WriteByte(byte(FirstVersion))
-	//Delimiter.
+	// Delimiter.
 	buf.WriteByte(delimiter)
 	// Bits.
 	buf.Write([]byte(strconv.Itoa(zeroBits)))
-	//Delimiter.
+	// Delimiter.
 	buf.WriteByte(delimiter)
 	// Date.
 	buf.Write([]byte(time.Now().Format(dateFormat)))
-	//Delimiter.
+	// Delimiter.
 	buf.WriteByte(delimiter)
 	// Resource.
 	buf.Write(resource)
@@ -123,7 +125,9 @@ func (h *Hashcash) isValid(hash []byte) bool {
 
 // calculateHash calculates the SHA-1 hash of the given data.
 func calculateHash(data []byte) []byte {
+	// #nosec G401
 	hash := sha1.Sum(data)
+
 	return []byte(fmt.Sprintf("%x", hash))
 }
 

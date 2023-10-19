@@ -13,6 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	defaultRedisHost       = "localhost"
+	defaultCacheExpitation = time.Millisecond * 50
+)
+
 var (
 	redisClient *redis.Client
 	redisPort   string
@@ -51,7 +56,7 @@ func newDockerRedis() (func(), error) {
 	// Set up a Redis client to connect to the Docker container
 	redisPort = container.GetPort("6379/tcp")
 	redisClient = redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("localhost:%s", redisPort), // The container is accessible at this address
+		Addr: fmt.Sprintf("%s:%s", defaultRedisHost, redisPort), // The container is accessible at this address
 	})
 
 	// Wait for the Redis container to be ready
@@ -101,7 +106,9 @@ func TestRedisCacheIntegration(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cache, err := New(context.Background(), "localhost", ":"+redisPort, time.Millisecond*50)
+			ctx := context.Background()
+
+			cache, err := New(ctx, defaultRedisHost, ":"+redisPort, defaultCacheExpitation)
 			assert.NoError(t, err)
 
 			// Test Add and Get methods
@@ -111,7 +118,7 @@ func TestRedisCacheIntegration(t *testing.T) {
 			}
 
 			if tc.expired {
-				time.Sleep(time.Millisecond * 100)
+				time.Sleep(defaultCacheExpitation * 2)
 			}
 
 			exists, err := cache.Get(tc.keyGet)
@@ -120,7 +127,8 @@ func TestRedisCacheIntegration(t *testing.T) {
 
 			// Clean up
 			if tc.keyAdd != nil {
-				redisClient.Del(context.Background(), string(tc.keyAdd))
+				result := redisClient.Get(ctx, string(tc.keyAdd))
+				assert.Equal(t, redis.Nil, result.Err())
 			}
 		})
 	}

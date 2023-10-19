@@ -26,7 +26,7 @@ func main() {
 	log := logger.New(debug)
 	defer func() {
 		done()
-		log.Sync()
+		_ = log.Sync()
 
 		if r := recover(); r != nil {
 			log.Fatal("application panic", zap.Any("panic", r))
@@ -45,7 +45,7 @@ func main() {
 	// Get application cfg.
 	cfg, err := config.Parse(confString)
 	if err != nil {
-		log.Fatal("failed to parse config", zap.Error(err))
+		log.Panic("failed to parse config", zap.Error(err))
 	}
 
 	// Channel to notify when client is shut down.
