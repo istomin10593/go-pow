@@ -1,10 +1,11 @@
 package client
 
 import (
+	"errors"
 	"go-pow/client/pkg/config"
 	"go-pow/pkg/hashcash"
+	"go-pow/pkg/pow"
 
-	"io"
 	"net"
 	"testing"
 	"time"
@@ -13,13 +14,21 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
+const (
+	defaultServerHost      = "localhost"
+	defaultServerPort      = ":8081"
+	defaultSourceFile      = "quotes_test.txt"
+	defaultPowTimeout      = time.Second * 1
+	defaultCacheExpitation = time.Millisecond * 50
+)
+
 // getConfig returns a config.Config with the given parameters.
-func getConfig(serverPort string, maxIteration int) *config.Config {
+func getConfig(maxIteration int) *config.Config {
 	config := &config.Config{}
 
-	config.Server.Host = "localhost"
-	config.Server.Port = serverPort
-	config.Server.Timeout = time.Second * 1
+	config.Server.Host = defaultServerHost
+	config.Server.Port = defaultServerPort
+	config.Server.Timeout = defaultPowTimeout
 
 	config.Pow.MaxIterations = maxIteration
 
@@ -27,12 +36,10 @@ func getConfig(serverPort string, maxIteration int) *config.Config {
 }
 
 func TestHandleConnection(t *testing.T) {
-	defaultserverPort := ":8081"
-
 	type args struct {
-		serverPort   string
-		maxIteration int
-		challenge    string
+		serverAddress string
+		maxIteration  int
+		challenge     string
 	}
 
 	tests := []struct {
@@ -42,24 +49,25 @@ func TestHandleConnection(t *testing.T) {
 		testServer func(*testing.T, args, chan struct{})
 	}{
 		{
-			name: "Error - failed to read a challenge response",
+			name: "Error - failed to read a challenge header",
 			args: args{
-				serverPort: defaultserverPort,
+				serverAddress: defaultServerHost + defaultServerPort,
 			},
-			wantErr: io.EOF,
-			testServer: func(t *testing.T, args args, syncChan chan struct{}) {
-				l, err := net.Listen("tcp", args.serverPort)
+			wantErr: pow.ErrReadConn,
+			testServer: func(t *testing.T, args args, sync chan struct{}) {
+				l, err := net.Listen("tcp", args.serverAddress)
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer l.Close()
 
-				t.Log("test server  listening on port", args.serverPort)
+				t.Log("test server  listening on port", args.serverAddress)
 
-				syncChan <- struct{}{}
+				sync <- struct{}{}
 
 				conn, err := l.Accept()
 				if err != nil {
+					t.Log("test server failed to accept connection")
 					t.Fatal(err)
 				}
 
@@ -73,33 +81,50 @@ func TestHandleConnection(t *testing.T) {
 		{
 			name: "Error - failed to parse the challenge header",
 			args: args{
-				serverPort: defaultserverPort,
-				challenge:  "0:4:230919221643:127.0.0.1:44736::OTg3:MA==",
+				serverAddress: defaultServerHost + defaultServerPort,
+				challenge:     "0:3:231019170010:127.0.0.1:58312::NzUx:MA==",
 			},
 			wantErr: hashcash.ErrInvalidVersion,
-			testServer: func(t *testing.T, args args, syncChan chan struct{}) {
-				l, err := net.Listen("tcp", args.serverPort)
+			testServer: func(t *testing.T, args args, sync chan struct{}) {
+				l, err := net.Listen("tcp", args.serverAddress)
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer l.Close()
 
-				t.Log("test server  listening on port", args.serverPort)
+				t.Log("test server  listening on", args.serverAddress)
 
-				syncChan <- struct{}{}
+				sync <- struct{}{}
 
 				conn, err := l.Accept()
 				if err != nil {
+					t.Log("test server failed to accept connection")
 					t.Fatal(err)
 				}
 
 				t.Log("test server accepted connection")
 
-				if _, err := conn.Write([]byte(args.challenge)); err != nil {
+				prot := pow.New(conn, defaultPowTimeout)
+
+				if err := prot.Read(); err != nil {
+					t.Log("test server failed to read request for a challenge")
 					t.Fatal(err)
 				}
 
-				t.Log("test server send challenge")
+				if prot.Phase() != pow.InitPhase {
+					t.Fatal("phase is not init")
+				}
+
+				t.Log("test server received  request for a challenge")
+
+				prot.SetPayload([]byte(args.challenge))
+
+				if err := prot.Write(); err != nil {
+					t.Log("test server failed to send a challenge")
+					t.Fatal(err)
+				}
+
+				t.Log("test server send a challenge")
 
 				conn.Close()
 
@@ -109,34 +134,51 @@ func TestHandleConnection(t *testing.T) {
 		{
 			name: "Error - failed to solve the pow",
 			args: args{
-				maxIteration: 100000,
-				serverPort:   defaultserverPort,
-				challenge:    "1:50:230919221643:127.0.0.1:44736::OTg3:MA==",
+				maxIteration:  100000,
+				serverAddress: defaultServerHost + defaultServerPort,
+				challenge:     "1:50:231019170010:127.0.0.1:58312::NzUx:MA==",
 			},
-			wantErr: hashcash.ErrExceedHashLength,
-			testServer: func(t *testing.T, args args, syncChan chan struct{}) {
-				l, err := net.Listen("tcp", args.serverPort)
+			wantErr: hashcash.ErrMaxIterationsExceeded,
+			testServer: func(t *testing.T, args args, sync chan struct{}) {
+				l, err := net.Listen("tcp", args.serverAddress)
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer l.Close()
 
-				t.Log("test server  listening on port", args.serverPort)
+				t.Log("test server  listening on", args.serverAddress)
 
-				syncChan <- struct{}{}
+				sync <- struct{}{}
 
 				conn, err := l.Accept()
 				if err != nil {
+					t.Log("test server failed to accept connection")
 					t.Fatal(err)
 				}
 
 				t.Log("test server accepted connection")
 
-				if _, err := conn.Write([]byte(args.challenge)); err != nil {
+				prot := pow.New(conn, defaultPowTimeout)
+
+				if err := prot.Read(); err != nil {
+					t.Log("test server failed to read request for a challenge")
 					t.Fatal(err)
 				}
 
-				t.Log("test server send challenge")
+				if prot.Phase() != pow.InitPhase {
+					t.Fatal("phase is not init")
+				}
+
+				t.Log("test server received  request for a challenge")
+
+				prot.SetPayload([]byte(args.challenge))
+
+				if err := prot.Write(); err != nil {
+					t.Log("test server failed to send a challenge")
+					t.Fatal(err)
+				}
+
+				t.Log("test server send a challenge")
 
 				conn.Close()
 
@@ -144,36 +186,59 @@ func TestHandleConnection(t *testing.T) {
 			},
 		},
 		{
-			name: "Error - failed to send the solution header",
+			name: "Error - failed to read a wisdom quote",
 			args: args{
-				maxIteration: 100000,
-				serverPort:   defaultserverPort,
-				challenge:    "1:4:230919221643:127.0.0.1:44736::OTg3:MA==",
+				maxIteration:  100000,
+				serverAddress: defaultServerHost + defaultServerPort,
+				challenge:     "1:3:231019170010:127.0.0.1:58312::NzUx:MA==",
 			},
-			wantErr: io.EOF,
-			testServer: func(t *testing.T, args args, syncChan chan struct{}) {
-				l, err := net.Listen("tcp", args.serverPort)
+			wantErr: pow.ErrReadConn,
+			testServer: func(t *testing.T, args args, sync chan struct{}) {
+				l, err := net.Listen("tcp", args.serverAddress)
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer l.Close()
 
-				t.Log("test server  listening on port", args.serverPort)
+				t.Log("test server  listening on", args.serverAddress)
 
-				syncChan <- struct{}{}
+				sync <- struct{}{}
 
 				conn, err := l.Accept()
 				if err != nil {
+					t.Log("test server failed to accept connection")
 					t.Fatal(err)
 				}
 
 				t.Log("test server accepted connection")
 
-				if _, err := conn.Write([]byte(args.challenge)); err != nil {
+				prot := pow.New(conn, defaultPowTimeout)
+
+				if err := prot.Read(); err != nil {
+					t.Log("test server failed to read request for a challenge")
 					t.Fatal(err)
 				}
 
-				t.Log("test server send challenge")
+				if prot.Phase() != pow.InitPhase {
+					t.Fatal("phase is not init")
+				}
+
+				t.Log("test server received  request for a challenge")
+
+				prot.SetPayload([]byte(args.challenge))
+
+				if err := prot.Write(); err != nil {
+					t.Log("test server failed to send a challenge")
+					t.Fatal(err)
+				}
+
+				t.Log("test server send a challenge")
+
+				conn, err = l.Accept()
+				if err != nil {
+					t.Log("test server failed to accept connection")
+					t.Fatal(err)
+				}
 
 				conn.Close()
 
@@ -183,46 +248,72 @@ func TestHandleConnection(t *testing.T) {
 		{
 			name: "Success - solve the pow",
 			args: args{
-				maxIteration: 100000,
-				serverPort:   defaultserverPort,
-				challenge:    "1:4:230919221643:127.0.0.1:44736::OTg3:MA==",
+				maxIteration:  100000,
+				serverAddress: defaultServerHost + defaultServerPort,
+				challenge:     "1:3:231019170010:127.0.0.1:58312::NzUx:MA==",
 			},
-			testServer: func(t *testing.T, args args, syncChan chan struct{}) {
-				l, err := net.Listen("tcp", args.serverPort)
+			testServer: func(t *testing.T, args args, sync chan struct{}) {
+				l, err := net.Listen("tcp", args.serverAddress)
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer l.Close()
 
-				t.Log("test server  listening on port", args.serverPort)
+				t.Log("test server  listening on", args.serverAddress)
 
-				syncChan <- struct{}{}
+				sync <- struct{}{}
 
 				conn, err := l.Accept()
 				if err != nil {
+					t.Log("test server failed to accept connection")
 					t.Fatal(err)
 				}
 
 				t.Log("test server accepted connection")
 
-				if _, err := conn.Write([]byte(args.challenge)); err != nil {
+				prot := pow.New(conn, defaultPowTimeout)
+
+				if err := prot.Read(); err != nil {
+					t.Log("test server failed to read request for a challenge")
+					t.Fatal(err)
+				}
+
+				if prot.Phase() != pow.InitPhase {
+					t.Fatal("phase is not init")
+				}
+
+				t.Log("test server received  request for a challenge")
+
+				prot.SetPayload([]byte(args.challenge))
+
+				if err := prot.Write(); err != nil {
+					t.Log("test server failed to send a challenge")
 					t.Fatal(err)
 				}
 
 				t.Log("test server send a challenge")
 
-				buf := make([]byte, 1024)
-				n, err := conn.Read(buf)
+				conn, err = l.Accept()
 				if err != nil {
+					t.Log("test server failed to accept connection")
 					t.Fatal(err)
 				}
 
-				headerSolution := string(buf[:n])
+				prot = pow.New(conn, defaultPowTimeout)
+
+				if err := prot.Read(); err != nil {
+					t.Log("test server failed to read a solution header")
+					t.Fatal(err)
+				}
+
+				if prot.Phase() != pow.ValidPhase {
+					t.Fatal("phase is not valid")
+				}
 
 				t.Log("test server received a solution header")
 
 				var hashcashResponse hashcash.Hashcash
-				if err := hashcashResponse.Parse(headerSolution); err != nil {
+				if err := hashcashResponse.Parse(prot.Payload()); err != nil {
 					t.Log("test server failed to parse a response header")
 					t.Fatal(err)
 				}
@@ -232,10 +323,13 @@ func TestHandleConnection(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				if _, err := conn.Write([]byte("good job")); err != nil {
-					t.Log("est server failed to send a quote")
+				prot.SetPayload([]byte("good job"))
+				if err := prot.Write(); err != nil {
+					t.Log("test server failed to send a quote")
 					t.Fatal(err)
 				}
+
+				t.Log("test server sent a quote")
 
 				conn.Close()
 
@@ -246,25 +340,27 @@ func TestHandleConnection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			syncChan := make(chan struct{})
-			defer close(syncChan)
+			sync := make(chan struct{})
+			defer close(sync)
 
 			// Run test server.
-			go tt.testServer(t, tt.args, syncChan)
+			go tt.testServer(t, tt.args, sync)
+
+			<-sync
 
 			// Handle connection.
 			log := zaptest.NewLogger(t)
 			defer log.Sync()
-			config := getConfig(tt.args.serverPort, tt.args.maxIteration)
+			config := getConfig(tt.args.maxIteration)
 
+			client := New(log, config)
 			done := make(chan struct{})
 			defer close(done)
 
 			go func() {
-				<-syncChan
-				err := handleConnection(log, config, done, 1)
+				err := client.handleConnection(1, done)
 				if err != nil {
-					assert.Equal(t, tt.wantErr, err)
+					assert.True(t, errors.Is(err, tt.wantErr))
 				}
 			}()
 

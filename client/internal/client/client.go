@@ -140,7 +140,7 @@ func (c *Client) handleConnection(
 		return err
 	}
 
-	// Read a challenge header.
+	// Read a wisdom quote.
 	if err = prot.Read(); err != nil {
 		log.Error("failed to read a wisdom quote", zap.Error(err))
 

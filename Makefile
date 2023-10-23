@@ -4,6 +4,11 @@ up:
 down:
 	docker compose down
 
+build:
+	cd server && make build; \
+	cd ..; \
+	cd client && make build
+
 server-run:
 	cd server && make run
 

@@ -35,7 +35,7 @@ func getConfig(zeroBits int, timeout time.Duration) *config.Config {
 
 	config.Pow.ZeroBits = zeroBits
 
-	config.Cache.Expiration = time.Second * 1
+	config.Cache.Expiration = defaultCacheExpitation
 
 	return config
 }
