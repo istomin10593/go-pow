@@ -18,7 +18,7 @@ var (
 
 // The header line follows this format:
 //
-// `Ver:Bits:Date:Resource:Rand:Counter
+// Ver:Bits:Date:Resource:Rand:Counter
 //
 // It looks something like this:
 //
@@ -27,7 +27,7 @@ var (
 // The header contains:
 //
 // Ver: Hashcash format version, 1 (which supersedes version 0).
-// Bits: This parameter represents the count of "partial pre-image" (zero) bits.
+// Bits: Number of "partial pre-image" (zero) bits.
 // Date: The time that the message was sent, in the format YYMMDD[hhmm[ss]].
 // Resource: Resource data string being transmitted an IP address.
 // Rand: String of random characters, encoded in base-64 format.

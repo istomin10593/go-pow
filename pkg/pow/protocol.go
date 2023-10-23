@@ -23,13 +23,13 @@ var (
 // `Phase_Payload`
 //
 // Components:
-// - `Phase` - Communication protocol phase.
+// `Phase` - communication protocol phase.
 // - 0 represents the initial phase where the server issues a challenge to the client.
 // - 1 represents the validation phase where the server validates the client's solution.
 //
 // `_` - Delimiter separates the Phase and the Payload.
 //
-// - `Payload`: Contains various information, including challenge headers, provided tokens, and other messages.
+// `Payload`- contains various information, including challenge headers, provided tokens, and other messages.
 //   - This section can include different types of data depending on the protocol phase.
 //   - For example, during the initial phase, it may carry a challenge header.
 //   - In the validation phase, it could contain a provided token for verification or requested information.
